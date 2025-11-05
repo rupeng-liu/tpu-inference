@@ -1,6 +1,5 @@
 import copy
 import functools
-import os
 from collections.abc import Sequence
 from contextlib import nullcontext
 from typing import Any, List, Optional, Tuple
@@ -86,22 +85,16 @@ class VllmModelWrapper:
         assert self.vllm_config.model_config.dtype in TORCH_DTYPE_TO_JAX, "The model_config.dtype must be a PyTorch dtype."
         vllm_config_for_load.device_config.device = "cpu"
 
-        if os.getenv("JAX_RANDOM_WEIGHTS", False):
-            vllm_config_for_load.load_config.load_format = "dummy"
-            use_random_weights = True
-        else:
-            use_random_weights = (
-                vllm_config_for_load.load_config.load_format == "dummy")
-        if use_random_weights:
+        if vllm_config_for_load.load_config.load_format == "dummy":
             logger.info(
                 "Initializing vLLM model with random weights, weight loading skipped."
             )
-        # The DummyModelLoader in vLLM calls torch._sync for torch_xla path when
-        # it detects the tpu platform, but we don't need it and it causes crash
-        # without proper setup.
-        load_context = patch(
-            "torch._sync",
-            return_value=None) if use_random_weights else nullcontext()
+            # The DummyModelLoader in vLLM calls torch._sync for torch_xla path
+            # when it detects the tpu platform, but we don't need it and it
+            # causes crash without proper setup.
+            load_context = patch("torch._sync", return_value=None)
+        else:
+            load_context = nullcontext()
 
         # Load the vLLM model and wrap it into a new model whose forward
         # function can calculate the hidden_state and logits.
