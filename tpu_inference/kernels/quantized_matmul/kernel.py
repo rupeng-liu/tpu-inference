@@ -248,6 +248,7 @@ def quantized_matmul_kernel(
     Quantized matmul result.
   """
 
+    print("Printing kernel shape", x.shape, w_q.shape, w_scale.shape)
     if w_zp is not None:
         raise NotImplementedError('zero_point is not supported.')
 

@@ -374,7 +374,8 @@ class JaxEinsumLayer(nnx.Einsum):
         self.rhs_parsed_info = prepare_rhs_transform(self.einsum_str,
                                                      self.kernel_shape)
         self.weight_sharding = P(self.kernel.sharding[0],
-                                 self.kernel.sharding[1])
+                                 self.kernel.sharding[1],
+                                 self.kernel.sharding[2])
 
     def __call__(self,
                  inputs: jax.Array,
@@ -444,9 +445,9 @@ class JaxEinsumLayer(nnx.Einsum):
         if weight_scale is None:
             raise ValueError(f"weight scale was not set for {path}")
 
-        parsed_info = prepare_lhs_and_output_transform(inputs.shape,
-                                                       self.rhs_parsed_info)
-        inputs = transform_lhs_for_matmul(inputs, parsed_info)
+        #parsed_info = prepare_lhs_and_output_transform(inputs.shape,
+        #self.rhs_parsed_info)
+        #inputs = transform_lhs_for_matmul(inputs, parsed_info)
         y = sharded_quantized_matmul(
             inputs,
             kernel,
@@ -454,7 +455,8 @@ class JaxEinsumLayer(nnx.Einsum):
             self.model.mesh,
             self.weight_sharding,
         )
-        y = transform_matmul_output_to_einsum(y, parsed_info)
+        print("Printing quantized einsum output:", y.shape)
+        #y = transform_matmul_output_to_einsum(y, parsed_info)
         return y
 
 
@@ -487,7 +489,7 @@ class Qwen3Attention(nnx.Module):
             model=model,
             param_dtype=dtype,
             # P(None, "model", None) -> P("model", None, None) due to weigh transpose.
-            kernel_init=nnx.with_partitioning(init_fn, (None, "model")),
+            kernel_init=nnx.with_partitioning(init_fn, (None, "model", None)),
             rngs=rng,
         )
         self.q_norm = nnx.RMSNorm(
@@ -503,7 +505,7 @@ class Qwen3Attention(nnx.Module):
             model=model,
             param_dtype=dtype,
             # P(None, "model", None) -> P("model", None, None) due to weigh transpose.
-            kernel_init=nnx.with_partitioning(init_fn, (None, "model")),
+            kernel_init=nnx.with_partitioning(init_fn, (None, "model", None)),
             rngs=rng,
         )
         self.k_norm = nnx.RMSNorm(
@@ -519,7 +521,7 @@ class Qwen3Attention(nnx.Module):
             model=model,
             param_dtype=dtype,
             # P(None, "model", None) -> P("model", None, None) due to weigh transpose.
-            kernel_init=nnx.with_partitioning(init_fn, (None, "model")),
+            kernel_init=nnx.with_partitioning(init_fn, (None, "model", None)),
             rngs=rng,
         )
         self.o_proj = JaxEinsumLayer(
@@ -528,7 +530,7 @@ class Qwen3Attention(nnx.Module):
             model=model,
             param_dtype=dtype,
             # P("model", None, None) -> P(None, "model", None) due to weigh transpose.
-            kernel_init=nnx.with_partitioning(init_fn, ("model", None)),
+            kernel_init=nnx.with_partitioning(init_fn, ("model", None, None)),
             rngs=rng,
         )
 
@@ -589,6 +591,7 @@ class Qwen3Attention(nnx.Module):
             v_scale=v_scale,
         )
         # (T, D)
+        print("Printing input of o proj:", outputs.shape)
         o = self.o_proj(outputs)
         return new_kv_cache, o
 
